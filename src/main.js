@@ -19,9 +19,24 @@ import { buildGoldenHourAtmosphere } from './scene/GoldenHourAtmosphere.js';
 import { buildRoomEnvironment } from './scene/RoomEnvironmentBuilder.js';
 import { createKartPhysicsController } from './physics/KartPhysicsController.js';
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
+import { Capacitor } from '@capacitor/core';
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
+
+  // Runtime profile. Android keeps the same game/physics code but uses a lower-cost
+  // rendering profile and explicit app lifecycle handling.
+  const capacitorPlatform = Capacitor.getPlatform();
+  const isAndroidNative = capacitorPlatform === 'android';
+  const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const isNarrowViewport = window.matchMedia?.('(max-width: 768px)').matches ?? false;
+  const isAndroidDevice = /Android/i.test(navigator.userAgent);
+  const isMobileDevice =
+    isAndroidNative || isCoarsePointer || isNarrowViewport || isAndroidDevice;
+
+  if (isAndroidNative) {
+    document.documentElement.classList.add('capacitor-android');
+  }
 
   // -------------------------------------------------------------------------
   // 1. THREE.JS SCENE, RENDERER & ACES FILMIC + UNREAL BLOOM POST-PROCESSING
@@ -65,7 +80,10 @@ async function initApp() {
     }
   }
 
-  const pixelRatio = isScreenshotUrl ? 1.0 : Math.min(window.devicePixelRatio, 2.0);
+  // Phone GPUs get a conservative DPR cap. Desktop keeps the existing 2x cap.
+  const pixelRatio = isScreenshotUrl
+    ? 1.0
+    : Math.min(window.devicePixelRatio || 1, isMobileDevice ? 1.5 : 2.0);
   renderer.setPixelRatio(pixelRatio);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -199,6 +217,13 @@ async function initApp() {
   const drawSize = renderer.getDrawingBufferSize(new THREE.Vector2());
   fxaaPass.material.uniforms['resolution'].value.set(1.0 / drawSize.x, 1.0 / drawSize.y);
   composer.addPass(fxaaPass);
+
+  // The desktop image pipeline is preserved. Phones start with the two most
+  // expensive fullscreen effects disabled to keep GPU fill-rate predictable.
+  if (isMobileDevice && !isScreenshotMode) {
+    bokehPass.enabled = false;
+    bloomPass.enabled = false;
+  }
 
   const orbitControls = new OrbitControls(camera, renderer.domElement);
   orbitControls.enableDamping = true;
@@ -2328,7 +2353,12 @@ async function initApp() {
       applyMobileTouchState();
     };
 
-    elMobileTouchControls.addEventListener('touchstart', updateFromTouches, {
+    elMobileTouchControls.addEventListener('touchstart', (e) => {
+      updateFromTouches(e);
+      if (isAndroidNative && navigator.vibrate) {
+        navigator.vibrate(8);
+      }
+    }, {
       passive: false,
     });
     elMobileTouchControls.addEventListener('touchmove', updateFromTouches, {
@@ -2698,23 +2728,54 @@ async function initApp() {
   let screenshotFrameCounter = 0;
 
   // -------------------------------------------------------------------------
-  // 7. WINDOW RESIZE & 60FPS ANIMATION LOOP
+  // 7. VIEWPORT & 60FPS ANIMATION LOOP
   // -------------------------------------------------------------------------
-  window.addEventListener('resize', () => {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+  const syncViewport = () => {
+    const viewport = window.visualViewport;
+    const w = Math.max(1, Math.round(viewport?.width || window.innerWidth));
+    const h = Math.max(1, Math.round(viewport?.height || window.innerHeight));
+
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
     composer.setSize(w, h);
+
     const newDrawSize = renderer.getDrawingBufferSize(new THREE.Vector2());
     fxaaPass.material.uniforms['resolution'].value.set(
       1.0 / newDrawSize.x,
       1.0 / newDrawSize.y
     );
-  });
+  };
+
+  window.addEventListener('resize', syncViewport, { passive: true });
+  window.visualViewport?.addEventListener('resize', syncViewport, { passive: true });
+  syncViewport();
 
   const clock = new THREE.Clock();
+
+  const resetFrameClockOnResume = () => {
+    clock.getDelta();
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      releaseAllMobileTouchControls();
+    } else {
+      resetFrameClockOnResume();
+      syncViewport();
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    releaseAllMobileTouchControls();
+    resetFrameClockOnResume();
+  });
+
+  window.addEventListener('pageshow', () => {
+    resetFrameClockOnResume();
+    syncViewport();
+  });
+
   let currentFocusDistance = activeCameraMode === 7 ? 1.85 : activeCameraMode === 8 ? 0.42 : 0.12;
 
   // Pre-allocated vectors & 3D probe points for zero-GC exact view-space DOF
@@ -2776,7 +2837,9 @@ async function initApp() {
   }
 
   function animate() {
-    const dt = isScreenshotMode ? 1 / 60 : clock.getDelta();
+    const rawDt = isScreenshotMode ? 1 / 60 : clock.getDelta();
+    // Prevent a background/resume stall on Android from injecting a giant physics step.
+    const dt = Math.min(rawDt, 1 / 30);
     const elapsedTime =
       (isScreenshotMode ? screenshotFrameCounter / 60 : clock.getElapsedTime()) +
       requestedTimeOffset;
