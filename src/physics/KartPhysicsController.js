@@ -166,12 +166,30 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   let minFinishDist = Infinity;
   const sectorStartArcs = {};
 
+  // Indoor levels can specify their own start/finish world coordinate.
+  const requestedStart = manifest?.start_finish_xyz;
+  if (Array.isArray(requestedStart) && requestedStart.length >= 3) {
+    const [rx, ry, rz] = requestedStart;
+    let bestStartDist = Infinity;
+    for (let i = 0; i < N; i++) {
+      const p = samples[i].position;
+      const d2 =
+        (p[0] - rx) * (p[0] - rx) +
+        (p[1] - ry) * (p[1] - ry) +
+        (p[2] - rz) * (p[2] - rz);
+      if (d2 < bestStartDist) {
+        bestStartDist = d2;
+        startFinishIdx = i;
+      }
+    }
+  }
+
   for (let i = 0; i < N; i++) {
     const s = samples[i];
     if (sectorStartArcs[s.sector] === undefined) {
       sectorStartArcs[s.sector] = s.arc_length_m;
     }
-    if (s.sector === 6) {
+    if (s.sector === 6 && !(Array.isArray(requestedStart) && requestedStart.length >= 3)) {
       const dx = s.position[0] - 0.0183;
       const dz = s.position[2] - 0.255;
       const d2 = dx * dx + dz * dz;
