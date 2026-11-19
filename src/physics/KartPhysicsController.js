@@ -584,6 +584,19 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.activeKeysStr = computeActiveKeysStr();
     state.signedCurvature = frame.signedCurvature;
 
+    const surfaceProfiles = {
+      plastic: { grip: 1.00, speed: 1.00 },
+      wood: { grip: 0.90, speed: 0.92 },
+      'bed-fabric': { grip: 1.08, speed: 0.68 },
+      carpet: { grip: 1.12, speed: 0.72 },
+      tile: { grip: 0.72, speed: 1.04 },
+      glass: { grip: 0.55, speed: 1.10 },
+    };
+    const surface = surfaceProfiles[frame.surface] || surfaceProfiles.plastic;
+    state.surfaceId = frame.surface || 'plastic';
+    state.surfaceGripMultiplier = surface.grip;
+    state.surfaceSpeedMultiplier = surface.speed;
+
     // Calibrated speeds in real meters/second (1:150 N-scale: ~15% reduction from 1:87 to balance lower eye-height optical flow)
     const manualMaxSpeed = 0.195 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
     const boostMaxSpeed = 0.289 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
@@ -934,6 +947,15 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     } else {
       lateralDot = state.speed * (-Math.sin(state.headingYaw)) * 0.82;
     }
+
+    // Higher-grip fabrics tame sideways motion; hard/slippery surfaces let the buggy
+    // carry more lateral speed and make drift correction less forgiving.
+    const lateralGripResponse = THREE.MathUtils.clamp(
+      0.70 + 0.30 * state.surfaceGripMultiplier,
+      0.50,
+      1.08
+    );
+    lateralDot *= lateralGripResponse;
     state.lateralVel = lateralDot;
     state.lateralOffset += lateralDot * clampedDt;
 
