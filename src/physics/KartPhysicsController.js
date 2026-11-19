@@ -224,6 +224,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     bankDeg: 0,
     signedCurvature: 0,
     slope: 0,
+    jumpZone: 0,
+    jumpLaunch: 0,
   };
   const _nextSampleOut = {
     index: 0,
@@ -235,6 +237,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     bankDeg: 0,
     signedCurvature: 0,
     slope: 0,
+    jumpZone: 0,
+    jumpLaunch: 0,
   };
 
   function sampleTrackAtArcLength(sVal, out = _sampleOut) {
@@ -279,6 +283,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     out.bankDeg = bankDeg;
     out.signedCurvature = signedCurvature;
     out.slope = out.tangent.y;
+    out.jumpZone = Number(s0.jump_zone || 0);
+    out.jumpLaunch = Number(s0.jump_launch || 0);
     return out;
   }
 
@@ -327,6 +333,13 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     boostActive: 0.0, // remaining turbo boost timer
     hopHeight: 0.0,
     hopVel: 0.0,
+    airborne: false,
+    jumpCooldown: 0.0,
+    jumpCount: 0,
+    airTime: 0.0,
+    stuntScore: 0,
+    lastLandingImpulse: 0.0,
+    manualJumpRequested: false,
     curbRumble: 0.0,
     railImpactActive: false,
     railHitCooldown: 0.0,
@@ -422,7 +435,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.position
       .copy(newFrame.position)
       .addScaledVector(newFrame.right, state.lateralOffset)
-      .addScaledVector(newFrame.normal, 0.0003 + rumbleLift);
+      .addScaledVector(newFrame.normal, 0.0003 + rumbleLift + state.hopHeight);
 
     state.altitudeMm = Math.max(0, state.position.y * 1000.0);
 
@@ -487,6 +500,13 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.lastRoadTurnDeg = 0.0;
     state.lastSteerTurnDeg = 0.0;
     state.boostActive = 0.0;
+    state.hopHeight = 0.0;
+    state.hopVel = 0.0;
+    state.airborne = false;
+    state.jumpCooldown = 0.0;
+    state.airTime = 0.0;
+    state.manualJumpRequested = false;
+    state.lastLandingImpulse = 0.0;
     state.speed = state.autopilot || state.victoryCruise ? 0.187 : 0.0;
     syncPoseFromSpline();
   }
@@ -974,6 +994,10 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       1.08
     );
     lateralDot *= lateralGripResponse;
+    if (state.airborne) {
+      lateralDot += state.steerInput * 0.018;
+      lateralDot *= 0.18;
+    }
     state.lateralVel = lateralDot;
     state.lateralOffset += lateralDot * clampedDt;
 
@@ -994,7 +1018,12 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       absLat >= 0.0078 &&
       ((signLatCurrent > 0 && turnRight < 0) || (signLatCurrent < 0 && turnRight > 0));
 
-    if (absLat < 0.0086) {
+    if (state.airborne) {
+      state.headingYaw = THREE.MathUtils.clamp(state.headingYaw - state.steerInput * 0.55 * clampedDt, -0.70, 0.70);
+      state.lateralOffset = THREE.MathUtils.clamp(state.lateralOffset, -0.012, 0.012);
+    }
+
+    if (absLat < 0.0086 || state.airborne) {
       state.railImpactActive = false;
     }
 
@@ -1163,14 +1192,41 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       }
     }
 
-    // Vertical hop suspension spring
-    if (state.hopHeight > 0 || state.hopVel !== 0) {
+    // Beach Buggy stunt physics: launch from marked ramps or with Space/mobile Jump.
+    const jumpLaunch = THREE.MathUtils.clamp(frame.jumpLaunch || 0, 0.0, 1.0);
+    const launchEligible = !state.airborne && state.jumpCooldown <= 0.0 && Math.abs(state.speed) > 0.075 && (jumpLaunch > 0.08 || state.manualJumpRequested);
+    if (launchEligible) {
+      const baseLaunch = 0.020 + 0.016 * THREE.MathUtils.clamp(Math.abs(state.speed) / 0.20, 0, 1);
+      state.hopVel = Math.max(state.hopVel, baseLaunch * (0.70 + 0.90 * jumpLaunch));
+      state.airborne = true;
+      state.jumpCount += 1;
+      state.airTime = 0.0;
+      state.stuntScore += Math.round(100 + 250 * jumpLaunch);
+      state.manualJumpRequested = false;
+      state.jumpCooldown = 0.16;
+    } else {
+      state.manualJumpRequested = false;
+    }
+    state.jumpCooldown = Math.max(0.0, state.jumpCooldown - clampedDt);
+    if (state.airborne || state.hopHeight > 0 || state.hopVel !== 0) {
+      state.airborne = true;
+      state.airTime += clampedDt;
       state.hopHeight += state.hopVel * clampedDt;
-      state.hopVel -= 0.18 * clampedDt;
-      if (state.hopHeight <= 0) {
-        state.hopHeight = 0;
-        state.hopVel = 0;
+      state.hopVel -= 0.115 * clampedDt;
+      if (state.hopHeight <= 0.0 && state.hopVel <= 0.0) {
+        const landingImpulse = Math.abs(state.hopVel);
+        state.hopHeight = 0.0;
+        state.hopVel = 0.0;
+        state.airborne = false;
+        state.lastLandingImpulse = landingImpulse;
+        state.speed *= THREE.MathUtils.clamp(1.0 - landingImpulse * 4.5, 0.72, 0.98);
+        state.stuntScore += Math.round(150 + Math.min(600, state.airTime * 500));
+        state.jumpCooldown = 0.18;
       }
+    } else {
+      state.airborne = false;
+      state.airTime = 0.0;
+      state.lastLandingImpulse = 0.0;
     }
 
     // Re-evaluate exact 3D pose & right-handed orientation quaternion on the banked spline
@@ -1191,6 +1247,7 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     setTouchKey,
     clearTouchKeys,
     notifyLightsOut,
+    requestJump: () => { state.manualJumpRequested = true; },
     onLapComplete: (cb) => {
       onLapCompleteCallback = cb;
     },
