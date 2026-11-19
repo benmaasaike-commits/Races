@@ -12,10 +12,26 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   const gravity = { x: 0.0, y: -9.81, z: 0.0 };
   const world = new RAPIER.World(gravity);
 
-  // 1. Static Oak Desk Collider (1100 x 25 x 600 mm, top at Y=0)
-  const deskBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0.0, -0.0125, 0.0);
-  const deskBody = world.createRigidBody(deskBodyDesc);
-  world.createCollider(RAPIER.ColliderDesc.cuboid(0.55, 0.0125, 0.3), deskBody);
+  // 1. Static world floor. Indoor levels can provide their own bounds while
+  // the original desk defaults remain unchanged.
+  const worldBounds = manifest?.world_bounds_m || {
+    width: 1.10,
+    depth: 0.60,
+    floor_y: 0.0,
+  };
+  const floorHalfW = Math.max(0.05, Number(worldBounds.width || 1.10) * 0.5);
+  const floorHalfD = Math.max(0.05, Number(worldBounds.depth || 0.60) * 0.5);
+  const floorY = Number(worldBounds.floor_y || 0.0);
+  const floorBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(
+    0.0,
+    floorY - 0.0125,
+    0.0
+  );
+  const floorBody = world.createRigidBody(floorBodyDesc);
+  world.createCollider(
+    RAPIER.ColliderDesc.cuboid(floorHalfW, 0.0125, floorHalfD),
+    floorBody
+  );
 
   // 2. Static Colliders for the Desk Monuments
   if (manifest && Array.isArray(manifest.desk_objects)) {
@@ -297,6 +313,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     railImpactActive: false,
     railHitCooldown: 0.0,
     downforceG: 1.0,
+    surfaceId: 'plastic',
+    surfaceGripMultiplier: 1.0,
+    surfaceSpeedMultiplier: 1.0,
     autopilot: false, // Starts 100% in Manual Mode at 0.0 m/s!
     victoryCruise: false, // Celebratory AI cruise after completing 3 laps
     raceClockActive: false, // Starts ticking when F1 5-light countdown turns OFF (or when driving begins)
@@ -566,8 +585,8 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.signedCurvature = frame.signedCurvature;
 
     // Calibrated speeds in real meters/second (1:150 N-scale: ~15% reduction from 1:87 to balance lower eye-height optical flow)
-    const manualMaxSpeed = 0.195 * state.topSpeedMultiplier;
-    const boostMaxSpeed = 0.289 * state.topSpeedMultiplier;
+    const manualMaxSpeed = 0.195 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
+    const boostMaxSpeed = 0.289 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
     const autopilotCruiseSpeed = 0.204 * state.topSpeedMultiplier;
     const manualAccel = 0.204; // Smooth progressive acceleration (0 -> top speed in ~1.0s)
 
