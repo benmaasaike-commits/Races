@@ -12,10 +12,26 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   const gravity = { x: 0.0, y: -9.81, z: 0.0 };
   const world = new RAPIER.World(gravity);
 
-  // 1. Static Oak Desk Collider (1100 x 25 x 600 mm, top at Y=0)
-  const deskBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0.0, -0.0125, 0.0);
-  const deskBody = world.createRigidBody(deskBodyDesc);
-  world.createCollider(RAPIER.ColliderDesc.cuboid(0.55, 0.0125, 0.3), deskBody);
+  // 1. Static world floor. Indoor levels can provide their own bounds while
+  // the original desk defaults remain unchanged.
+  const worldBounds = manifest?.world_bounds_m || {
+    width: 1.10,
+    depth: 0.60,
+    floor_y: 0.0,
+  };
+  const floorHalfW = Math.max(0.05, Number(worldBounds.width || 1.10) * 0.5);
+  const floorHalfD = Math.max(0.05, Number(worldBounds.depth || 0.60) * 0.5);
+  const floorY = Number(worldBounds.floor_y || 0.0);
+  const floorBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(
+    0.0,
+    floorY - 0.0125,
+    0.0
+  );
+  const floorBody = world.createRigidBody(floorBodyDesc);
+  world.createCollider(
+    RAPIER.ColliderDesc.cuboid(floorHalfW, 0.0125, floorHalfD),
+    floorBody
+  );
 
   // 2. Static Colliders for the Desk Monuments
   if (manifest && Array.isArray(manifest.desk_objects)) {
@@ -150,12 +166,30 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
   let minFinishDist = Infinity;
   const sectorStartArcs = {};
 
+  // Indoor levels can specify their own start/finish world coordinate.
+  const requestedStart = manifest?.start_finish_xyz;
+  if (Array.isArray(requestedStart) && requestedStart.length >= 3) {
+    const [rx, ry, rz] = requestedStart;
+    let bestStartDist = Infinity;
+    for (let i = 0; i < N; i++) {
+      const p = samples[i].position;
+      const d2 =
+        (p[0] - rx) * (p[0] - rx) +
+        (p[1] - ry) * (p[1] - ry) +
+        (p[2] - rz) * (p[2] - rz);
+      if (d2 < bestStartDist) {
+        bestStartDist = d2;
+        startFinishIdx = i;
+      }
+    }
+  }
+
   for (let i = 0; i < N; i++) {
     const s = samples[i];
     if (sectorStartArcs[s.sector] === undefined) {
       sectorStartArcs[s.sector] = s.arc_length_m;
     }
-    if (s.sector === 6) {
+    if (s.sector === 6 && !(Array.isArray(requestedStart) && requestedStart.length >= 3)) {
       const dx = s.position[0] - 0.0183;
       const dz = s.position[2] - 0.255;
       const d2 = dx * dx + dz * dz;
@@ -297,6 +331,9 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     railImpactActive: false,
     railHitCooldown: 0.0,
     downforceG: 1.0,
+    surfaceId: 'plastic',
+    surfaceGripMultiplier: 1.0,
+    surfaceSpeedMultiplier: 1.0,
     autopilot: false, // Starts 100% in Manual Mode at 0.0 m/s!
     victoryCruise: false, // Celebratory AI cruise after completing 3 laps
     raceClockActive: false, // Starts ticking when F1 5-light countdown turns OFF (or when driving begins)
@@ -565,9 +602,22 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     state.activeKeysStr = computeActiveKeysStr();
     state.signedCurvature = frame.signedCurvature;
 
+    const surfaceProfiles = {
+      plastic: { grip: 1.00, speed: 1.00 },
+      wood: { grip: 0.90, speed: 0.92 },
+      'bed-fabric': { grip: 1.08, speed: 0.68 },
+      carpet: { grip: 1.12, speed: 0.72 },
+      tile: { grip: 0.72, speed: 1.04 },
+      glass: { grip: 0.55, speed: 1.10 },
+    };
+    const surface = surfaceProfiles[frame.surface] || surfaceProfiles.plastic;
+    state.surfaceId = frame.surface || 'plastic';
+    state.surfaceGripMultiplier = surface.grip;
+    state.surfaceSpeedMultiplier = surface.speed;
+
     // Calibrated speeds in real meters/second (1:150 N-scale: ~15% reduction from 1:87 to balance lower eye-height optical flow)
-    const manualMaxSpeed = 0.195 * state.topSpeedMultiplier;
-    const boostMaxSpeed = 0.289 * state.topSpeedMultiplier;
+    const manualMaxSpeed = 0.195 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
+    const boostMaxSpeed = 0.289 * state.topSpeedMultiplier * state.surfaceSpeedMultiplier;
     const autopilotCruiseSpeed = 0.204 * state.topSpeedMultiplier;
     const manualAccel = 0.204; // Smooth progressive acceleration (0 -> top speed in ~1.0s)
 
@@ -915,6 +965,15 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
     } else {
       lateralDot = state.speed * (-Math.sin(state.headingYaw)) * 0.82;
     }
+
+    // Higher-grip fabrics tame sideways motion; hard/slippery surfaces let the buggy
+    // carry more lateral speed and make drift correction less forgiving.
+    const lateralGripResponse = THREE.MathUtils.clamp(
+      0.70 + 0.30 * state.surfaceGripMultiplier,
+      0.50,
+      1.08
+    );
+    lateralDot *= lateralGripResponse;
     state.lateralVel = lateralDot;
     state.lateralOffset += lateralDot * clampedDt;
 
