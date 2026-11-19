@@ -1667,6 +1667,26 @@ async function initApp() {
     });
   }
 
+  const worldSelect = document.getElementById('world-select');
+  if (worldSelect) {
+    worldSelect.value = requestedWorld;
+    worldSelect.addEventListener('change', (e) => {
+      const nextWorld = e.target.value;
+      const nextUrl = new URL(window.location.href);
+      if (nextWorld === 'desk') {
+        nextUrl.searchParams.delete('world');
+      } else {
+        nextUrl.searchParams.set('world', nextWorld);
+      }
+      window.location.assign(nextUrl.toString());
+    });
+  }
+
+  const welcomeWorldEyebrow = document.querySelector('.welcome-eyebrow');
+  if (welcomeWorldEyebrow && isIndoorWorld) {
+    welcomeWorldEyebrow.textContent = `${indoorWorldConfig.label.toUpperCase()} · 3 LAPS`;
+  }
+
   const chkHideLogo = document.getElementById('chk-hide-logo');
   const elBrandLogo = document.getElementById('hud-brand-logo');
   if (chkHideLogo && elBrandLogo) {
@@ -2503,6 +2523,10 @@ async function initApp() {
   }
 
   if (isIndoorWorld) {
+    const welcomeTitle = document.getElementById('welcome-title');
+    if (welcomeTitle) {
+      welcomeTitle.textContent = `INDOOR BEACH BUGGY`;
+    }
     const worldBrand = document.getElementById('hud-brand-logo');
     if (worldBrand) worldBrand.textContent = indoorWorldConfig.label;
     const startText = document.getElementById('welcome-start-text');
