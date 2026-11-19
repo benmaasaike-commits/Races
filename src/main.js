@@ -408,6 +408,7 @@ async function initApp() {
   };
   const glbContainerGroup = new THREE.Group();
   glbContainerGroup.name = 'LoadedGLBAssetsGroup';
+  glbContainerGroup.visible = !isBedroomWorld;
   scene.add(glbContainerGroup);
 
   // Bedroom furniture nodes (NeatUpholsteredBed, BoucleDeskChair, WalnutDresserAndGemini4Vignette,
@@ -2228,7 +2229,9 @@ async function initApp() {
     if (isCircuitReady) {
       btnWelcomeStart.classList.remove('is-warming-up', 'is-queued');
       if (elWelcomeProgressFill) elWelcomeProgressFill.style.width = '100%';
-      if (elWelcomeStartText) elWelcomeStartText.textContent = 'START TIME TRIAL';
+      if (elWelcomeStartText) {
+        elWelcomeStartText.textContent = isBedroomWorld ? 'START BEDROOM RUN' : 'START TIME TRIAL';
+      }
       if (elWelcomeEnterKbd) elWelcomeEnterKbd.textContent = 'ENTER ↵';
       focusWelcomeStartButton();
       return;
@@ -2249,7 +2252,7 @@ async function initApp() {
     }
     if (elWelcomeStartText) {
       elWelcomeStartText.textContent = pendingRaceStartAfterWarmup
-        ? 'STARTING TIME TRIAL...'
+        ? (isBedroomWorld ? 'STARTING BEDROOM RUN...' : 'STARTING TIME TRIAL...')
         : 'PREPARING CIRCUIT...';
     }
     if (elWelcomeEnterKbd) {
