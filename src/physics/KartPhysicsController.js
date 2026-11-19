@@ -586,6 +586,10 @@ export async function createKartPhysicsController(splineData, manifest, roadGeo)
       } else if (code === 'KeyD' || code === 'ArrowRight') {
         kbKeys.right = true;
         if (state.autopilot) setAutopilot(false);
+      } else if (code === 'Space') {
+        if (!e.repeat) state.manualJumpRequested = true;
+        e.preventDefault();
+        if (state.autopilot) setAutopilot(false);
       } else if (code === 'KeyP') {
         setAutopilot(!state.autopilot);
       } else if (code === 'KeyR') {
