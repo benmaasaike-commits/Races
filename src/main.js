@@ -21,6 +21,7 @@ import { createKartPhysicsController } from './physics/KartPhysicsController.js'
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
 import { Capacitor } from '@capacitor/core';
 import { buildBedroomWorld, applyBeachBuggyStyle } from './scene/BedroomWorldBuilder.js';
+import { createBedroomStuntSplineData, buildIndoorStuntTrack } from './scene/IndoorStuntTrackBuilder.js';
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -243,7 +244,10 @@ async function initApp() {
     fetch('/assets/data/track_spline.json'),
   ]);
   const manifest = await manifestRes.json();
-  const splineData = await splineRes.json();
+  const fetchedSplineData = await splineRes.json();
+  const splineData = isBedroomWorld
+    ? createBedroomStuntSplineData()
+    : fetchedSplineData;
 
   // Sector lookup map
   const sectorNames = {};
@@ -292,7 +296,9 @@ async function initApp() {
     scene.background = new THREE.Color(0x171317);
   }
 
-  const coaster = buildCoasterTrack(splineData);
+  const coaster = isBedroomWorld
+    ? buildIndoorStuntTrack(splineData)
+    : buildCoasterTrack(splineData);
   scene.add(coaster.trackGroup);
   if (coaster.underTrackLedGroup) {
     scene.add(coaster.underTrackLedGroup);
