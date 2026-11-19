@@ -20,6 +20,7 @@ import { buildRoomEnvironment } from './scene/RoomEnvironmentBuilder.js';
 import { createKartPhysicsController } from './physics/KartPhysicsController.js';
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
 import { Capacitor } from '@capacitor/core';
+import { buildBedroomWorld, applyBeachBuggyStyle } from './scene/BedroomWorldBuilder.js';
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -60,6 +61,7 @@ async function initApp() {
   const urlParams = new URLSearchParams(window.location.search);
   const isScreenshotUrl = urlParams.get('screenshot') === '1';
   const isScreenshotMode = isScreenshotUrl;
+  const isBedroomWorld = urlParams.get('world') === 'bedroom';
 
   // Immediately initialize Welcome Button warmup state & grab keyboard focus into the iframe
   // so pressing Enter never triggers a parent-frame toolbar Reload button or flashes prematurely
@@ -277,6 +279,19 @@ async function initApp() {
   const roomEnv = buildRoomEnvironment(scene, settings);
   scene.add(roomEnv.roomRoot);
 
+  // Bedroom world is an additive prototype: desk remains the default world,
+  // while ?world=bedroom swaps the visible environment and applies the buggy styling.
+  const bedroomWorld = isBedroomWorld
+    ? buildBedroomWorld({ scene, settings: { ...settings, indoorBedroom: true } })
+    : null;
+
+  if (isBedroomWorld && bedroomWorld) {
+    diorama.root.visible = false;
+    if (diorama.nightGlowGroup) diorama.nightGlowGroup.visible = false;
+    roomEnv.roomRoot.visible = false;
+    scene.background = new THREE.Color(0x171317);
+  }
+
   const coaster = buildCoasterTrack(splineData);
   scene.add(coaster.trackGroup);
   if (coaster.underTrackLedGroup) {
@@ -286,6 +301,9 @@ async function initApp() {
 
   const microKart = buildMicroKart();
   microKart.kartRoot.scale.setScalar(0.38);
+  if (isBedroomWorld) {
+    applyBeachBuggyStyle(microKart);
+  }
   scene.add(microKart.kartRoot);
   scene.add(microKart.skidPoints);
 
@@ -390,6 +408,7 @@ async function initApp() {
   };
   const glbContainerGroup = new THREE.Group();
   glbContainerGroup.name = 'LoadedGLBAssetsGroup';
+  glbContainerGroup.visible = !isBedroomWorld;
   scene.add(glbContainerGroup);
 
   // Bedroom furniture nodes (NeatUpholsteredBed, BoucleDeskChair, WalnutDresserAndGemini4Vignette,
@@ -2210,7 +2229,9 @@ async function initApp() {
     if (isCircuitReady) {
       btnWelcomeStart.classList.remove('is-warming-up', 'is-queued');
       if (elWelcomeProgressFill) elWelcomeProgressFill.style.width = '100%';
-      if (elWelcomeStartText) elWelcomeStartText.textContent = 'START TIME TRIAL';
+      if (elWelcomeStartText) {
+        elWelcomeStartText.textContent = isBedroomWorld ? 'START BEDROOM RUN' : 'START TIME TRIAL';
+      }
       if (elWelcomeEnterKbd) elWelcomeEnterKbd.textContent = 'ENTER ↵';
       focusWelcomeStartButton();
       return;
@@ -2231,7 +2252,7 @@ async function initApp() {
     }
     if (elWelcomeStartText) {
       elWelcomeStartText.textContent = pendingRaceStartAfterWarmup
-        ? 'STARTING TIME TRIAL...'
+        ? (isBedroomWorld ? 'STARTING BEDROOM RUN...' : 'STARTING TIME TRIAL...')
         : 'PREPARING CIRCUIT...';
     }
     if (elWelcomeEnterKbd) {
@@ -2427,6 +2448,16 @@ async function initApp() {
       elWelcomeOverlay.classList.add('hidden');
     }
     syncMobileTouchControlsVisibility();
+  }
+
+  if (isBedroomWorld) {
+    const bedroomBrand = document.getElementById('hud-brand-logo');
+    if (bedroomBrand) bedroomBrand.textContent = 'Indoor Beach Buggy';
+    const startText = document.getElementById('welcome-start-text');
+    if (startText && !startText.classList.contains('is-warming-up')) {
+      startText.textContent = 'START BEDROOM RUN';
+    }
+    document.title = 'Races — Indoor Beach Buggy';
   }
 
   if (elBrandLogo) {
