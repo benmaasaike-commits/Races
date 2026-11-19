@@ -1347,6 +1347,8 @@ body {
     touch-action: none;
   }
 
+  .mobile-ctrl-jump { border-radius: 50%; min-width: 58px; min-height: 58px; margin-left: 8px; font-weight: 900; letter-spacing: 0.08em; }
+
   .mobile-ctrl-btn {
     position: relative;
     width: clamp(64px, 18.8vw, 82px);

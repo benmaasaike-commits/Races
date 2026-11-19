@@ -45,6 +45,10 @@ function sampleClosedSpline(controlPoints, sampleCount = 720, options = {}) {
     const surface = typeof options.surfaceByProgress === 'function'
       ? options.surfaceByProgress(progress)
       : (progress > 0.36 && progress < 0.56 ? 'bed-fabric' : 'plastic');
+    const jumpLaunch = typeof options.jumpByProgress === 'function' ? THREE.MathUtils.clamp(Number(options.jumpByProgress(progress)) || 0, 0, 1) : 0;
+    const jumpLaunch = typeof options.jumpByProgress === 'function'
+      ? THREE.MathUtils.clamp(Number(options.jumpByProgress(progress)) || 0, 0, 1)
+      : 0;
 
     samples.push({
       index: i,
@@ -57,6 +61,8 @@ function sampleClosedSpline(controlPoints, sampleCount = 720, options = {}) {
       bank_deg: 0,
       arc_length_m: totalLength,
       surface,
+      jump_zone: jumpLaunch > 0 ? 1 : 0,
+      jump_launch: jumpLaunch,
     });
   }
 
@@ -229,6 +235,8 @@ export function createIndoorStuntSplineData(controlPoints, options = {}) {
 export function createBedroomStuntSplineData() {
   return createIndoorStuntSplineData(DEFAULT_CONTROL_POINTS, {
     name: 'Bedroom Indoor Beach Buggy Stunt Circuit',
+    jumpByProgress: (p) => (p > 0.045 && p < 0.095 ? 0.90 : 0),
+    jumpByProgress: (p) => (p > 0.045 && p < 0.095 ? 0.90 : 0),
     surfaceByProgress: (p) => {
       if (p > 0.36 && p < 0.56) return 'bed-fabric';
       if (p > 0.72 && p < 0.88) return 'wood';

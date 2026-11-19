@@ -264,6 +264,7 @@ async function initApp() {
         name: indoorWorldConfig.title,
         sectors: indoorWorldConfig.sectors,
         surfaceByProgress: indoorWorldConfig.surfaceByProgress,
+        jumpByProgress: indoorWorldConfig.jumpByProgress,
       })
     : fetchedSplineData;
 
@@ -2439,9 +2440,8 @@ async function initApp() {
         const t = touches[i];
         const hitEl = document.elementFromPoint(t.clientX, t.clientY);
         const btn = hitEl && hitEl.closest ? hitEl.closest('.mobile-ctrl-btn') : null;
-        if (btn && btn.dataset.control) {
-          activeTouchDirs.add(btn.dataset.control);
-        }
+        if (btn && btn.dataset.action === 'jump' && physics.requestJump) physics.requestJump();
+        if (btn && btn.dataset.control) activeTouchDirs.add(btn.dataset.control);
       }
       applyMobileTouchState();
     };
@@ -2469,7 +2469,8 @@ async function initApp() {
 
     for (const btn of mobileControlButtons) {
       const dir = btn.dataset.control;
-      if (!dir) continue;
+      const action = btn.dataset.action;
+      if (!dir && action !== 'jump') continue;
 
       btn.addEventListener('pointerdown', (e) => {
         if (e.pointerType === 'touch') return;
@@ -2480,8 +2481,14 @@ async function initApp() {
         } catch (_err) {
           // Ignore pointer capture errors
         }
-        activePointerDirs.set(e.pointerId, dir);
-        applyMobileTouchState();
+        if (action === 'jump' && physics.requestJump) {
+          physics.requestJump();
+          btn.classList.add('is-pressed');
+          window.setTimeout(() => btn.classList.remove('is-pressed'), 110);
+        } else if (dir) {
+          activePointerDirs.set(e.pointerId, dir);
+          applyMobileTouchState();
+        }
       });
 
       const releasePointer = (e) => {
