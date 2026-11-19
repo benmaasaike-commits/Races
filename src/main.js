@@ -840,9 +840,22 @@ async function initApp() {
     });
   }
 
-  checkAndLoadGlbModels();
-  // Poll gently until all 4 GLBs are loaded
-  glbPollInterval = setInterval(checkAndLoadGlbModels, 10000);
+  if (isBedroomWorld) {
+    // Bedroom mode is fully procedural for now; avoid downloading desk-only GLBs.
+    settledGlbStatus.desk = true;
+    settledGlbStatus.track = true;
+    settledGlbStatus.kart = true;
+    settledGlbStatus.room = true;
+    loadedGlbStatus.desk = false;
+    loadedGlbStatus.track = false;
+    loadedGlbStatus.kart = false;
+    loadedGlbStatus.room = false;
+    updateGlbBadge();
+  } else {
+    checkAndLoadGlbModels();
+    // Poll gently until all 4 GLBs are loaded
+    glbPollInterval = setInterval(checkAndLoadGlbModels, 10000);
+  }
 
   // Generous safety fallback only if a network request genuinely stalls
   setTimeout(() => {
@@ -858,9 +871,13 @@ async function initApp() {
   // -------------------------------------------------------------------------
   // 4. INITIALIZE RAPIER3D WORLD & 60FPS BANKED COASTER VEHICLE CONTROLLER
   // -------------------------------------------------------------------------
+  const physicsManifest = isBedroomWorld && bedroomWorld?.physicsManifest
+    ? bedroomWorld.physicsManifest
+    : manifest;
+
   const physics = await createKartPhysicsController(
     splineData,
-    manifest,
+    physicsManifest,
     coaster.roadGeo
   );
 
