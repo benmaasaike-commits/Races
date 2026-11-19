@@ -313,6 +313,42 @@ export function buildBedroomWorld({ scene, settings = {} } = {}) {
   ceilingGlow.position.set(-0.10, 0.42, -0.03);
   root.add(ceilingGlow);
 
+  // Physics metadata for the indoor world. The existing Rapier controller
+  // consumes the same descriptor shape used by the desk, but with bedroom-sized bounds.
+  const physicsManifest = {
+    world_bounds_m: {
+      width: 1.22,
+      depth: 0.82,
+      floor_y: 0.0,
+    },
+    desk_objects: [
+      {
+        id: 'bed',
+        name: 'Bedroom Bed',
+        center_xyz: [0.12, 0.0, -0.235],
+        dimensions_wdh: [0.48, 0.31, 0.145],
+      },
+      {
+        id: 'nightstand',
+        name: 'Bedroom Nightstand',
+        center_xyz: [-0.30, 0.0, -0.24],
+        dimensions_wdh: [0.13, 0.13, 0.14],
+      },
+      {
+        id: 'bookshelf',
+        name: 'Toy Bookshelf',
+        center_xyz: [0.43, 0.0, -0.20],
+        dimensions_wdh: [0.16, 0.24, 0.28],
+      },
+      {
+        id: 'pillow_pile',
+        name: 'Pillow Pile',
+        center_xyz: [-0.42, 0.0, 0.12],
+        dimensions_wdh: [0.18, 0.13, 0.14],
+      },
+    ],
+  };
+
   // Give the room builder a future surface metadata map.
   root.userData.surfaceZones = [
     { id: 'wood', center: [0, 0.001, 0.04], size: [1.18, 0.78], grip: 0.84, speed: 1.0 },
@@ -327,6 +363,7 @@ export function buildBedroomWorld({ scene, settings = {} } = {}) {
   return {
     root,
     surfaceZones: root.userData.surfaceZones,
+    physicsManifest,
   };
 }
 
