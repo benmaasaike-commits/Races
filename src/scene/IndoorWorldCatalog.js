@@ -26,6 +26,7 @@ export const INDOOR_WORLD_CATALOG = {
       { id: 5, name: 'Rug Run' },
       { id: 6, name: 'Bedroom Start / Finish' },
     ],
+    jumpByProgress: (p) => (p > 0.10 && p < 0.16 ? 0.95 : p > 0.43 && p < 0.48 ? 0.70 : 0),
     surfaceByProgress: (p) => {
       if (p > 0.36 && p < 0.56) return 'bed-fabric';
       if (p > 0.72 && p < 0.88) return 'wood';
@@ -60,6 +61,7 @@ export const INDOOR_WORLD_CATALOG = {
       { id: 5, name: 'Carpet Drift' },
       { id: 6, name: 'Living Room Start / Finish' },
     ],
+    jumpByProgress: (p) => (p > 0.18 && p < 0.24 ? 0.92 : p > 0.48 && p < 0.54 ? 0.65 : 0),
     surfaceByProgress: (p) => (p > 0.25 && p < 0.55 ? 'carpet' : 'wood'),
   },
 
@@ -90,6 +92,7 @@ export const INDOOR_WORLD_CATALOG = {
       { id: 5, name: 'Kitchen Slide' },
       { id: 6, name: 'Kitchen Start / Finish' },
     ],
+    jumpByProgress: (p) => (p > 0.20 && p < 0.27 ? 0.88 : p > 0.46 && p < 0.52 ? 0.72 : 0),
     surfaceByProgress: (p) => (p > 0.22 && p < 0.44 ? 'wood' : 'tile'),
   },
 
@@ -123,6 +126,7 @@ export const INDOOR_WORLD_CATALOG = {
       { id: 5, name: 'Whole House Sprint' },
       { id: 6, name: 'House Start / Finish' },
     ],
+    jumpByProgress: (p) => (p > 0.14 && p < 0.20 ? 1.0 : p > 0.40 && p < 0.47 ? 0.90 : p > 0.67 && p < 0.73 ? 0.82 : 0),
     surfaceByProgress: (p) => {
       if (p < 0.20) return 'wood';
       if (p < 0.45) return 'carpet';
