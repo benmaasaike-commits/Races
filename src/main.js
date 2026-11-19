@@ -21,7 +21,9 @@ import { createKartPhysicsController } from './physics/KartPhysicsController.js'
 import { createWebAudioSynth } from './audio/WebAudioSynth.js';
 import { Capacitor } from '@capacitor/core';
 import { buildBedroomWorld, applyBeachBuggyStyle } from './scene/BedroomWorldBuilder.js';
-import { createBedroomStuntSplineData, buildIndoorStuntTrack } from './scene/IndoorStuntTrackBuilder.js';
+import { buildLivingRoomWorld, buildKitchenWorld, buildWholeHouseWorld } from './scene/InteriorWorldBuilders.js';
+import { createIndoorStuntSplineData, buildIndoorStuntTrack } from './scene/IndoorStuntTrackBuilder.js';
+import { INDOOR_WORLD_CATALOG } from './scene/IndoorWorldCatalog.js';
 
 async function initApp() {
   const container = document.getElementById('canvas-container');
@@ -62,7 +64,19 @@ async function initApp() {
   const urlParams = new URLSearchParams(window.location.search);
   const isScreenshotUrl = urlParams.get('screenshot') === '1';
   const isScreenshotMode = isScreenshotUrl;
-  const isBedroomWorld = urlParams.get('world') === 'bedroom';
+
+  const worldAliases = {
+    desk: 'desk',
+    bedroom: 'bedroom',
+    living: 'living',
+    'living-room': 'living',
+    kitchen: 'kitchen',
+    wholeHouse: 'wholeHouse',
+    'whole-house': 'wholeHouse',
+  };
+  const requestedWorld = worldAliases[urlParams.get('world') || 'desk'] || 'desk';
+  const indoorWorldConfig = INDOOR_WORLD_CATALOG[requestedWorld] || null;
+  const isIndoorWorld = Boolean(indoorWorldConfig);
 
   // Immediately initialize Welcome Button warmup state & grab keyboard focus into the iframe
   // so pressing Enter never triggers a parent-frame toolbar Reload button or flashes prematurely
@@ -245,8 +259,12 @@ async function initApp() {
   ]);
   const manifest = await manifestRes.json();
   const fetchedSplineData = await splineRes.json();
-  const splineData = isBedroomWorld
-    ? createBedroomStuntSplineData()
+  const splineData = isIndoorWorld
+    ? createIndoorStuntSplineData(indoorWorldConfig.controlPoints, {
+        name: indoorWorldConfig.title,
+        sectors: indoorWorldConfig.sectors,
+        surfaceByProgress: indoorWorldConfig.surfaceByProgress,
+      })
     : fetchedSplineData;
 
   // Sector lookup map
@@ -256,7 +274,7 @@ async function initApp() {
   }
 
   // -------------------------------------------------------------------------
-  // 3. BUILD WARM NIGHT-TIME ATMOSPHERE, DESK MONUMENTS, COASTER TRACK, 1:87 KART & BEDROOM
+  // 3. BUILD THE ACTIVE WORLD, STUNT TRACK & BEACH BUGGY
   // -------------------------------------------------------------------------
   const settings = {
     sunIntensity: 0.0,
@@ -270,6 +288,7 @@ async function initApp() {
     showDustMotes: false,
     droneKartScale: false,
     panoKart100: true,
+    indoorWorld: requestedWorld,
   };
   scene.environmentIntensity = 0.08 + 0.55 * settings.sunIntensity;
 
@@ -283,20 +302,30 @@ async function initApp() {
   const roomEnv = buildRoomEnvironment(scene, settings);
   scene.add(roomEnv.roomRoot);
 
-  // Bedroom world is an additive prototype: desk remains the default world,
-  // while ?world=bedroom swaps the visible environment and applies the buggy styling.
-  const bedroomWorld = isBedroomWorld
-    ? buildBedroomWorld({ scene, settings: { ...settings, indoorBedroom: true } })
+  const indoorBuilders = {
+    bedroom: buildBedroomWorld,
+    living: buildLivingRoomWorld,
+    kitchen: buildKitchenWorld,
+    wholeHouse: buildWholeHouseWorld,
+  };
+
+  const indoorWorld = isIndoorWorld
+    ? indoorBuilders[requestedWorld]({ scene, settings })
     : null;
 
-  if (isBedroomWorld && bedroomWorld) {
+  if (isIndoorWorld && indoorWorld) {
     diorama.root.visible = false;
     if (diorama.nightGlowGroup) diorama.nightGlowGroup.visible = false;
     roomEnv.roomRoot.visible = false;
-    scene.background = new THREE.Color(0x171317);
+    scene.background = new THREE.Color(
+      requestedWorld === 'kitchen' ? 0x171b1a :
+      requestedWorld === 'living' ? 0x17171a :
+      requestedWorld === 'wholeHouse' ? 0x14171a :
+      0x171317
+    );
   }
 
-  const coaster = isBedroomWorld
+  const coaster = isIndoorWorld
     ? buildIndoorStuntTrack(splineData)
     : buildCoasterTrack(splineData);
   scene.add(coaster.trackGroup);
@@ -307,7 +336,7 @@ async function initApp() {
 
   const microKart = buildMicroKart();
   microKart.kartRoot.scale.setScalar(0.38);
-  if (isBedroomWorld) {
+  if (isIndoorWorld) {
     applyBeachBuggyStyle(microKart);
   }
   scene.add(microKart.kartRoot);
@@ -414,7 +443,7 @@ async function initApp() {
   };
   const glbContainerGroup = new THREE.Group();
   glbContainerGroup.name = 'LoadedGLBAssetsGroup';
-  glbContainerGroup.visible = !isBedroomWorld;
+  glbContainerGroup.visible = !isIndoorWorld;
   scene.add(glbContainerGroup);
 
   // Bedroom furniture nodes (NeatUpholsteredBed, BoucleDeskChair, WalnutDresserAndGemini4Vignette,
@@ -840,8 +869,8 @@ async function initApp() {
     });
   }
 
-  if (isBedroomWorld) {
-    // Bedroom mode is fully procedural for now; avoid downloading desk-only GLBs.
+  if (isIndoorWorld) {
+    // Indoor worlds are fully procedural for now; avoid downloading desk-only GLBs.
     settledGlbStatus.desk = true;
     settledGlbStatus.track = true;
     settledGlbStatus.kart = true;
@@ -871,8 +900,8 @@ async function initApp() {
   // -------------------------------------------------------------------------
   // 4. INITIALIZE RAPIER3D WORLD & 60FPS BANKED COASTER VEHICLE CONTROLLER
   // -------------------------------------------------------------------------
-  const physicsManifest = isBedroomWorld && bedroomWorld?.physicsManifest
-    ? bedroomWorld.physicsManifest
+  const physicsManifest = isIndoorWorld && indoorWorld?.physicsManifest
+    ? indoorWorld.physicsManifest
     : manifest;
 
   const physics = await createKartPhysicsController(
@@ -1638,6 +1667,26 @@ async function initApp() {
     });
   }
 
+  const worldSelect = document.getElementById('world-select');
+  if (worldSelect) {
+    worldSelect.value = requestedWorld;
+    worldSelect.addEventListener('change', (e) => {
+      const nextWorld = e.target.value;
+      const nextUrl = new URL(window.location.href);
+      if (nextWorld === 'desk') {
+        nextUrl.searchParams.delete('world');
+      } else {
+        nextUrl.searchParams.set('world', nextWorld);
+      }
+      window.location.assign(nextUrl.toString());
+    });
+  }
+
+  const welcomeWorldEyebrow = document.querySelector('.welcome-eyebrow');
+  if (welcomeWorldEyebrow && isIndoorWorld) {
+    welcomeWorldEyebrow.textContent = `${indoorWorldConfig.label.toUpperCase()} · 3 LAPS`;
+  }
+
   const chkHideLogo = document.getElementById('chk-hide-logo');
   const elBrandLogo = document.getElementById('hud-brand-logo');
   if (chkHideLogo && elBrandLogo) {
@@ -2253,7 +2302,7 @@ async function initApp() {
       btnWelcomeStart.classList.remove('is-warming-up', 'is-queued');
       if (elWelcomeProgressFill) elWelcomeProgressFill.style.width = '100%';
       if (elWelcomeStartText) {
-        elWelcomeStartText.textContent = isBedroomWorld ? 'START BEDROOM RUN' : 'START TIME TRIAL';
+        elWelcomeStartText.textContent = isIndoorWorld ? `START ${indoorWorldConfig.label.toUpperCase()} RUN` : 'START TIME TRIAL';
       }
       if (elWelcomeEnterKbd) elWelcomeEnterKbd.textContent = 'ENTER ↵';
       focusWelcomeStartButton();
@@ -2275,7 +2324,7 @@ async function initApp() {
     }
     if (elWelcomeStartText) {
       elWelcomeStartText.textContent = pendingRaceStartAfterWarmup
-        ? (isBedroomWorld ? 'STARTING BEDROOM RUN...' : 'STARTING TIME TRIAL...')
+        ? (isIndoorWorld ? `STARTING ${indoorWorldConfig.label.toUpperCase()} RUN...` : 'STARTING TIME TRIAL...')
         : 'PREPARING CIRCUIT...';
     }
     if (elWelcomeEnterKbd) {
@@ -2473,14 +2522,18 @@ async function initApp() {
     syncMobileTouchControlsVisibility();
   }
 
-  if (isBedroomWorld) {
-    const bedroomBrand = document.getElementById('hud-brand-logo');
-    if (bedroomBrand) bedroomBrand.textContent = 'Indoor Beach Buggy';
+  if (isIndoorWorld) {
+    const welcomeTitle = document.getElementById('welcome-title');
+    if (welcomeTitle) {
+      welcomeTitle.textContent = `INDOOR BEACH BUGGY`;
+    }
+    const worldBrand = document.getElementById('hud-brand-logo');
+    if (worldBrand) worldBrand.textContent = indoorWorldConfig.label;
     const startText = document.getElementById('welcome-start-text');
     if (startText && !startText.classList.contains('is-warming-up')) {
-      startText.textContent = 'START BEDROOM RUN';
+      startText.textContent = `START ${indoorWorldConfig.label.toUpperCase()} RUN`;
     }
-    document.title = 'Races — Indoor Beach Buggy';
+    document.title = indoorWorldConfig.title;
   }
 
   if (elBrandLogo) {

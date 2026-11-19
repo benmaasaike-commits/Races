@@ -17,7 +17,7 @@ const DEFAULT_CONTROL_POINTS = [
   [ 0.45, 0.021,  0.30 ],
 ];
 
-function sampleClosedSpline(controlPoints, sampleCount = 720) {
+function sampleClosedSpline(controlPoints, sampleCount = 720, options = {}) {
   const controls = controlPoints.map((p) => new THREE.Vector3(...p));
   const curve = new THREE.CatmullRomCurve3(controls, true, 'catmullrom', 0.5);
   const points = curve.getPoints(sampleCount - 1);
@@ -42,9 +42,9 @@ function sampleClosedSpline(controlPoints, sampleCount = 720) {
     }
 
     const progress = i / sampleCount;
-    let surface = 'plastic';
-    if (progress > 0.36 && progress < 0.56) surface = 'bed-fabric';
-    else if (progress > 0.72 && progress < 0.88) surface = 'wood';
+    const surface = typeof options.surfaceByProgress === 'function'
+      ? options.surfaceByProgress(progress)
+      : (progress > 0.36 && progress < 0.56 ? 'bed-fabric' : 'plastic');
 
     samples.push({
       index: i,
@@ -68,7 +68,7 @@ function sampleClosedSpline(controlPoints, sampleCount = 720) {
   }
 
   return {
-    name: 'Bedroom Indoor Beach Buggy Stunt Circuit',
+    name: options.name || 'Indoor Beach Buggy Stunt Circuit',
     is_closed_periodic_loop: true,
     track_width_m: 0.024,
     curb_width_m: 0.0022,
@@ -77,15 +77,15 @@ function sampleClosedSpline(controlPoints, sampleCount = 720) {
     scale_equivalent_length_m: adjustedTotalLength * 87,
     num_control_points: controlPoints.length,
     num_samples: sampleCount,
-    sectors: [
-      { id: 1, name: 'Nightstand Launch' },
-      { id: 2, name: 'Bed Climb' },
-      { id: 3, name: 'Pillow Drop' },
-      { id: 4, name: 'Toy Shelf Sweep' },
-      { id: 5, name: 'Rug Run' },
-      { id: 6, name: 'Bedroom Start / Finish' },
+    sectors: options.sectors || [
+      { id: 1, name: 'Launch' },
+      { id: 2, name: 'Climb' },
+      { id: 3, name: 'Drop' },
+      { id: 4, name: 'Sweep' },
+      { id: 5, name: 'Stunt Run' },
+      { id: 6, name: 'Start / Finish' },
     ],
-    control_points: controlPoints.map((p, i) => [...p, 0, Math.min(6, Math.floor(i / 3) + 1)]),
+    control_points: controlPoints.map((p, i) => [...p, 0, Math.min(6, Math.floor(i * 6 / controlPoints.length) + 1)]),
     samples,
   };
 }
@@ -222,8 +222,19 @@ function addBoostPads(group, splineData) {
   }
 }
 
+export function createIndoorStuntSplineData(controlPoints, options = {}) {
+  return sampleClosedSpline(controlPoints, options.sampleCount || 720, options);
+}
+
 export function createBedroomStuntSplineData() {
-  return sampleClosedSpline(DEFAULT_CONTROL_POINTS, 720);
+  return createIndoorStuntSplineData(DEFAULT_CONTROL_POINTS, {
+    name: 'Bedroom Indoor Beach Buggy Stunt Circuit',
+    surfaceByProgress: (p) => {
+      if (p > 0.36 && p < 0.56) return 'bed-fabric';
+      if (p > 0.72 && p < 0.88) return 'wood';
+      return 'plastic';
+    },
+  });
 }
 
 export function buildIndoorStuntTrack(splineData) {
