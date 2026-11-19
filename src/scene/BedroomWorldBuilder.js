@@ -321,6 +321,7 @@ export function buildBedroomWorld({ scene, settings = {} } = {}) {
       depth: 0.82,
       floor_y: 0.0,
     },
+    start_finish_xyz: [0.48, 0.018, 0.28],
     desk_objects: [
       {
         id: 'bed',
